@@ -9,7 +9,7 @@ echo '{"async": true, "asyncTimeout": 60000}'
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PORTAL_DIR/docker-compose.yml"
+COMPOSE_FILE="$PORTAL_DIR/docker-compose.dev.yml"
 
 # Exit if Docker is not available
 if ! command -v docker &>/dev/null; then
@@ -38,5 +38,5 @@ if [ ! -f "$PORTAL_DIR/.env" ]; then
   fi
 fi
 
-# Start containers in background
-docker compose -f "$COMPOSE_FILE" up -d 2>/dev/null || true
+# Start database containers only (dev mode — portal runs on host)
+docker compose -f "$COMPOSE_FILE" up postgres redis -d 2>/dev/null || true
