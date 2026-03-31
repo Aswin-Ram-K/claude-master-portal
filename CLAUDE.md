@@ -3,7 +3,20 @@
 ## Current State
 
 **Branch:** `main`
-**Phases 1–4 complete. Phase 5 is next.**
+**Phases 1–5 complete. Phase 6 (Polish) is next.**
+
+### Dev Mode Setup
+- Docker Desktop required (postgres + redis in containers)
+- Portal runs on host: `cd portal && npm run dev` (port 3000)
+- DB: `postgresql://portal:portal@localhost:5433/claude_portal`
+- Redis: `redis://localhost:6380`
+- Desktop shortcut: `~/Desktop/Claude Portal.app`
+- Dev launcher: `launcher/portal-dev.sh`
+
+### Hooks Registered
+- **SessionStart**: `hooks/session-start-portal.sh` — auto-starts DB containers
+- **Stop**: `hooks/stop-session-log.sh` — generates `.claude-logs/` entries in repos
+- Session logs sync to `~/CLAUDE_MASTER/SESSION_LOGS/` via `/sync` (Step 9 in sync.sh)
 
 ## Architecture
 
