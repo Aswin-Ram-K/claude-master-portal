@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SessionLog {
+  id              String   @id
+  sessionId       String
+  repoOwner       String
+  repoName        String
+  branch          String?
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationSeconds Int?
+  summary         String?
+  filesChanged    Json     @default("[]")
+  commits         Json     @default("[]")
+  inputTokens     Int?
+  outputTokens    Int?
+  model           String?
+  entrypoint      String?
+  toolsUsed       Json     @default("[]")
+  subagents       Json     @default("[]")
+  userMessages    Json     @default("[]")
+  rawLog          Json     @default("{}")
+  syncedAt        DateTime @default(now())
+
+  @@index([repoOwner, repoName])
+  @@index([startedAt])
+  @@map("session_logs")
+}
+
+model Repo {
+  id            String    @id
+  owner         String
+  name          String
+  lastSessionAt DateTime?
+  totalSessions Int       @default(0)
+  htmlUrl       String?
+
+  @@map("repos")
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@map("chat_messages")
+}

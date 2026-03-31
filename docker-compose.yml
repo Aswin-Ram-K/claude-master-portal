@@ -1,0 +1,81 @@
+services:
+  portal:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile
+    container_name: claude-portal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://portal:${POSTGRES_PASSWORD:-portal}@postgres:5432/claude_portal
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - CLAUDE_HOME=/claude-config
+      - NODE_ENV=production
+    volumes:
+      - ${CLAUDE_HOME:-~/.claude}:/claude-config:ro
+    networks:
+      - portal-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: claude-portal-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=portal
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portal}
+      - POSTGRES_DB=claude_portal
+    volumes:
+      - portal_pgdata:/var/lib/postgresql/data
+    networks:
+      - portal-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d claude_portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: claude-portal-redis
+    restart: unless-stopped
+    volumes:
+      - portal_redisdata:/data
+    networks:
+      - portal-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: claude-portal-nginx
+    restart: unless-stopped
+    depends_on:
+      portal:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    networks:
+      - portal-net
+
+volumes:
+  portal_pgdata:
+  portal_redisdata:
+
+networks:
+  portal-net:
+    driver: bridge

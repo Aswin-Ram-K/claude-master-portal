@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Portal
+Comment=Claude Code Activity Dashboard — Track sessions, manage config, monitor instances
+Exec=LAUNCHER_PATH_PLACEHOLDER
+Icon=ICON_PATH_PLACEHOLDER
+Terminal=false
+Categories=Development;
+StartupWMClass=claude-portal
+Keywords=claude;code;ai;dashboard;

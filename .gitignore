@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Node
+node_modules/
+portal/node_modules/
+
+# Next.js
+portal/.next/
+portal/out/
+
+# Database
+data/
+portal_pgdata/
+portal_redisdata/
+
+# OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets
+*.key
+*.pem
