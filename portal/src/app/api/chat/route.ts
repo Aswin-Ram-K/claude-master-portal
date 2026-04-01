@@ -50,8 +50,11 @@ export async function POST(request: NextRequest) {
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
           );
-        } catch {
-          // Stream may have been closed by the client
+        } catch (err) {
+          // Stream closed by client — only log unexpected errors
+          if (!(err instanceof TypeError && String(err).includes("enqueue"))) {
+            console.error("[chat/sse] sendEvent error:", err);
+          }
         }
       };
 
@@ -82,33 +85,49 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // Persist assistant message
-            const assistantMsg = await prisma.chatMessage.create({
-              data: {
+            // Persist assistant message — wrap in try/catch so DB failure
+            // still closes the stream gracefully instead of crashing silently
+            try {
+              const assistantMsg = await prisma.chatMessage.create({
+                data: {
+                  conversationId,
+                  role: "assistant",
+                  content: fullText,
+                  metadata: JSON.stringify({
+                    totalCostUsd: metadata.totalCostUsd,
+                    durationMs: metadata.durationMs,
+                    model: metadata.model,
+                    configChangeProposals: proposals.length > 0 ? proposals : undefined,
+                  }),
+                  cliSessionId: metadata.sessionId,
+                },
+              });
+
+              sendEvent({
+                type: "done",
+                fullText,
+                messageId: assistantMsg.id,
                 conversationId,
-                role: "assistant",
-                content: fullText,
-                metadata: JSON.parse(JSON.stringify({
+                metadata: {
                   totalCostUsd: metadata.totalCostUsd,
                   durationMs: metadata.durationMs,
                   model: metadata.model,
-                  configChangeProposals: proposals.length > 0 ? proposals : undefined,
-                })),
-                cliSessionId: metadata.sessionId,
-              },
-            });
-
-            sendEvent({
-              type: "done",
-              fullText,
-              messageId: assistantMsg.id,
-              conversationId,
-              metadata: {
-                totalCostUsd: metadata.totalCostUsd,
-                durationMs: metadata.durationMs,
-                model: metadata.model,
-              },
-            });
+                },
+              });
+            } catch (dbErr) {
+              console.error("[chat/onComplete] DB write failed:", dbErr);
+              sendEvent({
+                type: "done",
+                fullText,
+                messageId: undefined,
+                conversationId,
+                metadata: {
+                  totalCostUsd: metadata.totalCostUsd,
+                  durationMs: metadata.durationMs,
+                  model: metadata.model,
+                },
+              });
+            }
 
             controller.close();
           },

@@ -92,7 +92,12 @@ export async function POST(request: NextRequest) {
     if (messageId) {
       const msg = await prisma.chatMessage.findUnique({ where: { id: messageId } });
       if (msg) {
-        const metadata = (msg.metadata as Record<string, unknown>) ?? {};
+        let metadata: Record<string, unknown> = {};
+        try {
+          metadata = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : (msg.metadata as Record<string, unknown>) ?? {};
+        } catch {
+          metadata = {};
+        }
         const proposals = (
           metadata.configChangeProposals as Array<Record<string, unknown>>
         ) ?? [];
@@ -101,7 +106,7 @@ export async function POST(request: NextRequest) {
         );
         await prisma.chatMessage.update({
           where: { id: messageId },
-          data: { metadata: JSON.parse(JSON.stringify({ ...metadata, configChangeProposals: updatedProposals })) },
+          data: { metadata: JSON.stringify({ ...metadata, configChangeProposals: updatedProposals }) },
         });
       }
     }

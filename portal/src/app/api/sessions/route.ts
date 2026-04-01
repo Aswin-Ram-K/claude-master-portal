@@ -1,34 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { deserializeSessionLog } from "@/lib/json-fields";
+import { getDateRangeStart } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function getStartDate(range: string | null): Date | null {
-  if (!range || range === "all") return null;
-  const now = new Date();
-  const start = new Date(now);
-  switch (range) {
-    case "today":
-      start.setHours(0, 0, 0, 0);
-      break;
-    case "7d":
-      start.setDate(start.getDate() - 7);
-      break;
-    case "30d":
-      start.setDate(start.getDate() - 30);
-      break;
-    case "90d":
-      start.setDate(start.getDate() - 90);
-      break;
-    default:
-      return null;
-  }
-  return start;
-}
-
 export async function GET(req: NextRequest) {
+  try {
   const range = req.nextUrl.searchParams.get("range");
-  const startDate = getStartDate(range);
+  const startDate = getDateRangeStart(range);
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -92,7 +72,13 @@ export async function GET(req: NextRequest) {
   ]);
 
   const totalCommits = weekCommits.reduce((sum, s) => {
-    const commits = s.commits as unknown[];
+    const raw = s.commits;
+    let commits: unknown[];
+    try {
+      commits = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown[];
+    } catch {
+      commits = [];
+    }
     return sum + (Array.isArray(commits) ? commits.length : 0);
   }, 0);
 
@@ -113,6 +99,14 @@ export async function GET(req: NextRequest) {
       sessionsToday,
       tokensToday,
     },
-    recentSessions,
+    recentSessions: recentSessions.map(s => deserializeSessionLog(s as Record<string, unknown>)),
   });
+  } catch (error) {
+    console.error("[api/sessions] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to load data", detail: message },
+      { status: 500 }
+    );
+  }
 }

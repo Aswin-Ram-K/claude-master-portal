@@ -38,3 +38,30 @@ export function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 1) + "\u2026";
 }
+
+/**
+ * Parse a time range string into a start Date, or null for "all".
+ * Shared by /api/sessions and /api/analytics.
+ */
+export function getDateRangeStart(range: string | null | undefined): Date | null {
+  if (!range || range === "all") return null;
+  const now = new Date();
+  const start = new Date(now);
+  switch (range) {
+    case "today":
+      start.setHours(0, 0, 0, 0);
+      break;
+    case "7d":
+      start.setDate(start.getDate() - 7);
+      break;
+    case "30d":
+      start.setDate(start.getDate() - 30);
+      break;
+    case "90d":
+      start.setDate(start.getDate() - 90);
+      break;
+    default:
+      return null;
+  }
+  return start;
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { deserializeSessionLog } from "@/lib/json-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
  *   order    — "asc" or "desc" (default "desc")
  */
 export async function GET(request: NextRequest) {
+  try {
   const { searchParams } = new URL(request.url);
   const repo = searchParams.get("repo");
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "50"), 200);
@@ -56,5 +58,14 @@ export async function GET(request: NextRequest) {
     prisma.sessionLog.count({ where }),
   ]);
 
-  return NextResponse.json({ sessions, total, limit, offset });
+  const parsed = sessions.map(s => deserializeSessionLog(s as Record<string, unknown>));
+  return NextResponse.json({ sessions: parsed, total, limit, offset });
+  } catch (error) {
+    console.error("[api/activity] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to load data", detail: message },
+      { status: 500 }
+    );
+  }
 }

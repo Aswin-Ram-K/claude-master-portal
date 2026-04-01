@@ -13,6 +13,7 @@ portal/out/
 data/
 portal_pgdata/
 portal_redisdata/
+portal/prisma/data/
 
 # OS
 .DS_Store

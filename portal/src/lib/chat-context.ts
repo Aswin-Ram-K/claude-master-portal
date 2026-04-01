@@ -74,7 +74,7 @@ export function isPathInScope(filePath: string): boolean {
   const claudeHome = resolve(CLAUDE_HOME);
 
   // Must be within ~/.claude/
-  if (resolved.startsWith(claudeHome)) return true;
+  if (resolved.startsWith(claudeHome + "/") || resolved === claudeHome) return true;
 
   // Also allow hook scripts that are referenced in settings
   // (these could be in project directories)
