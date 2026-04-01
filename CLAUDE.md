@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Branch:** `Aswin-Ram-K/standalone-mac-linux`
+**Branch:** `main`
 **Phases 1–7 complete. Phase 7: standalone app (Docker → SQLite).**
 
 ### Dev Mode Setup
@@ -23,14 +23,13 @@
 ```
 claude-master-portal/
 ├── setup.sh                    # One-command install (Node.js + deps + DB + shortcuts + hooks)
-├── docker/                     # Archived Docker files (no longer used)
+├── docker/                     # Optional Docker files for production deployment
 │   ├── docker-compose.yml
 │   ├── docker-compose.dev.yml
 │   ├── nginx/
 │   ├── Dockerfile / Dockerfile.dev
 │   └── entrypoint.sh
 ├── hooks/
-│   ├── auto-setup.sh           # Legacy setup (Docker-based, archived)
 │   ├── session-start-portal.sh # SessionStart hook (lightweight health check)
 │   └── stop-session-log.sh     # SessionStop hook for log generation
 ├── launcher/
@@ -38,7 +37,9 @@ claude-master-portal/
 │   ├── portal.sh               # Production launcher (standalone)
 │   ├── install.sh              # Desktop shortcut installer
 │   └── windows/                # Windows launcher
-├── docs/setup.md               # Manual setup guide
+├── docs/
+│   ├── setup.md                # Manual setup guide
+│   └── nextjs-upgrade-plan.md  # Next.js 15 migration plan
 └── portal/
     ├── prisma/
     │   ├── schema.prisma       # SQLite schema: SessionLog, Repo, ChatMessage
