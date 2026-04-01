@@ -3,10 +3,20 @@ set -euo pipefail
 
 # Claude Master Portal — Core Launcher
 # Starts Docker containers and opens the portal in your browser.
+# Works both from terminal and as a macOS .app bundle.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PORTAL_DIR/docker-compose.yml"
+LOG_FILE="$PORTAL_DIR/launcher/portal.log"
+
+# --- PATH setup for .app context (macOS .app bundles don't inherit shell PATH) ---
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+
+# Redirect all output to log file when launched from .app (no terminal)
+if [ ! -t 0 ] && [ ! -t 1 ]; then
+  exec > "$LOG_FILE" 2>&1
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -20,11 +30,12 @@ ok()   { echo -e "${GREEN}[Portal]${NC} $1"; }
 warn() { echo -e "${YELLOW}[Portal]${NC} $1"; }
 err()  { echo -e "${RED}[Portal]${NC} $1" >&2; }
 
+log "Starting portal.sh ($(date))"
+
 # --- 1. Check Docker ---
 if ! command -v docker &>/dev/null; then
-  err "Docker is not installed. Please install Docker Desktop first."
-  err "  macOS/Windows: https://www.docker.com/products/docker-desktop"
-  err "  Linux: https://docs.docker.com/engine/install/"
+  err "Docker is not installed."
+  osascript -e 'display dialog "Docker not found. Please install Docker Desktop." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
   exit 1
 fi
 
@@ -51,6 +62,7 @@ if ! docker info &>/dev/null 2>&1; then
     fi
     if [ "$i" -eq 30 ]; then
       err "Docker failed to start after 30 seconds. Please start Docker manually."
+      osascript -e 'display dialog "Docker failed to start after 30 seconds. Please start Docker Desktop manually." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
       exit 1
     fi
     sleep 1

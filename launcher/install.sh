@@ -7,7 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LAUNCHER="$SCRIPT_DIR/portal.sh"
-ICON="$PORTAL_DIR/portal/public/icon.png"
+ICON_ICNS="$PORTAL_DIR/portal/public/icon.icns"
+ICON_PNG="$PORTAL_DIR/portal/public/icon.png"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -50,14 +51,29 @@ EOF
 
   Darwin)
     APP_DIR="$HOME/Applications/Claude Portal.app"
+    DEV_LAUNCHER="$SCRIPT_DIR/portal-dev.sh"
+
+    # Remove stale .app from Desktop if present
+    if [ -d "$HOME/Desktop/Claude Portal.app" ]; then
+      rm -rf "$HOME/Desktop/Claude Portal.app"
+      warn "Removed stale .app from Desktop."
+    fi
+
+    # Clean and recreate
+    rm -rf "$APP_DIR"
     mkdir -p "$APP_DIR/Contents/MacOS"
     mkdir -p "$APP_DIR/Contents/Resources"
 
-    # Create launch script
-    cat > "$APP_DIR/Contents/MacOS/launch.sh" << EOF
+    # Ensure dev launcher is executable
+    chmod +x "$DEV_LAUNCHER"
+
+    # Create launch script — sets up environment for .app context
+    cat > "$APP_DIR/Contents/MacOS/launch.sh" << LAUNCHEOF
 #!/bin/bash
-exec "$LAUNCHER"
-EOF
+# Claude Portal .app launcher
+# Sets up PATH and environment since .app bundles don't inherit shell config
+exec "$DEV_LAUNCHER"
+LAUNCHEOF
     chmod +x "$APP_DIR/Contents/MacOS/launch.sh"
 
     # Create Info.plist
@@ -73,24 +89,42 @@ EOF
     <key>CFBundleIdentifier</key>
     <string>com.claude.portal</string>
     <key>CFBundleVersion</key>
-    <string>0.1.0</string>
+    <string>0.2.0</string>
     <key>CFBundleExecutable</key>
     <string>launch.sh</string>
     <key>CFBundleIconFile</key>
-    <string>icon</string>
+    <string>icon.icns</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
+    <key>LSUIElement</key>
+    <false/>
 </dict>
 </plist>
 EOF
 
-    # Copy icon if exists
-    if [ -f "$ICON" ]; then
-      cp "$ICON" "$APP_DIR/Contents/Resources/icon.png"
+    # Copy icons if they exist
+    if [ -f "$ICON_ICNS" ]; then
+      cp "$ICON_ICNS" "$APP_DIR/Contents/Resources/icon.icns"
+    fi
+    if [ -f "$ICON_PNG" ]; then
+      cp "$ICON_PNG" "$APP_DIR/Contents/Resources/icon.png"
     fi
 
+    # Create Desktop alias (Finder alias, not symlink — symlinks don't show icons)
+    rm -f "$HOME/Desktop/Claude Portal" "$HOME/Desktop/Claude Portal.app" 2>/dev/null || true
+    osascript -e "
+      tell application \"Finder\"
+        set appFile to POSIX file \"$APP_DIR\" as alias
+        make new alias file at (POSIX file \"$HOME/Desktop\" as alias) to appFile with properties {name:\"Claude Portal\"}
+      end tell
+    " 2>/dev/null || warn "Could not create Desktop alias. Drag from ~/Applications manually."
+
+    # Register with LaunchServices so Spotlight and icon cache work
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DIR" 2>/dev/null || true
+
     ok "macOS app installed at: $APP_DIR"
-    ok "You can find 'Claude Portal' in ~/Applications or via Spotlight."
+    ok "Desktop shortcut created."
+    ok "You can find 'Claude Portal' in ~/Applications, Desktop, or via Spotlight."
     ;;
 
   MINGW*|MSYS*|CYGWIN*)

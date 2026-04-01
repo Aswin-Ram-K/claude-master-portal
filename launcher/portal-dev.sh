@@ -3,11 +3,25 @@ set -euo pipefail
 
 # Claude Master Portal — Dev Mode Launcher
 # Starts postgres/redis via Docker, then runs Next.js dev server on host.
+# Works both from terminal and as a macOS .app bundle.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PORTAL_DIR/docker-compose.dev.yml"
 PORTAL_APP="$PORTAL_DIR/portal"
+LOG_FILE="$PORTAL_DIR/launcher/portal-dev.log"
+
+# --- PATH setup for .app context (macOS .app bundles don't inherit shell PATH) ---
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:$PATH"
+
+# Source nvm if available (for node/npm)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null
+
+# Redirect all output to log file when launched from .app (no terminal)
+if [ ! -t 0 ] && [ ! -t 1 ]; then
+  exec > "$LOG_FILE" 2>&1
+fi
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -20,9 +34,14 @@ ok()   { echo -e "${GREEN}[Portal]${NC} $1"; }
 warn() { echo -e "${YELLOW}[Portal]${NC} $1"; }
 err()  { echo -e "${RED}[Portal]${NC} $1" >&2; }
 
+log "Starting portal-dev.sh ($(date))"
+log "PATH: $PATH"
+
 # --- 1. Check Docker ---
 if ! command -v docker &>/dev/null; then
-  err "Docker is not installed."
+  err "Docker is not installed. PATH=$PATH"
+  # Show error dialog if launched from .app
+  osascript -e 'display dialog "Docker not found. Please install Docker Desktop." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
   exit 1
 fi
 

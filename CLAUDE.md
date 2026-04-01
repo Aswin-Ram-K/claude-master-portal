@@ -155,3 +155,15 @@ Scoped chat interface powered by Claude CLI subprocess.
 - All pages use `<PageTransition>` wrapper (Framer Motion fade+slide)
 - Responsive: 1-col mobile → 2-col tablet → 4-col desktop grid patterns
 - Sidebar collapses to 60px icons on mobile, 240px expanded on desktop
+
+## Launcher & Desktop Shortcut
+
+- **macOS .app** at `~/Applications/Claude Portal.app`, copy on `~/Desktop/Claude Portal.app`
+- `.app` runs `launcher/portal-dev.sh` which starts Docker containers + Next.js dev server
+- **Critical**: `.app` bundles don't inherit shell PATH — `portal-dev.sh` and `portal.sh` explicitly set PATH to include `/opt/homebrew/bin`, nvm node, `~/.local/bin`
+- When no terminal is attached (`.app` context), output redirects to `launcher/portal-dev.log`
+- Error dialogs shown via `osascript` when Docker is missing/won't start
+- Icon: `portal/public/icon.svg` (source) → `icon.png` + `icon.icns` (generated via qlmanage + iconutil)
+- Icon set on `.app` via `NSWorkspace.setIcon:forFile:` to embed in Finder metadata (prevents iCloud sync flicker)
+- **Don't use symlinks for Desktop shortcuts** — Finder aliases or real copies are needed for icon display
+- `launcher/install.sh` creates the .app, copies icon, registers with LaunchServices, creates Finder alias on Desktop
