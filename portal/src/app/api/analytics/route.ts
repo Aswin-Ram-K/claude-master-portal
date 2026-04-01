@@ -1,34 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { TimeRange } from "@/types/analytics";
+import { getDateRangeStart } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function getDateRange(range: TimeRange): Date | null {
-  if (range === "all") return null;
-  const now = new Date();
-  const start = new Date(now);
-  switch (range) {
-    case "today":
-      start.setHours(0, 0, 0, 0);
-      break;
-    case "7d":
-      start.setDate(start.getDate() - 7);
-      break;
-    case "30d":
-      start.setDate(start.getDate() - 30);
-      break;
-    case "90d":
-      start.setDate(start.getDate() - 90);
-      break;
-  }
-  return start;
-}
-
 export async function GET(req: NextRequest) {
-  const range = (req.nextUrl.searchParams.get("range") ?? "7d") as TimeRange;
-  const startDate = getDateRange(range);
+  try {
+  const range = req.nextUrl.searchParams.get("range") ?? "7d";
+  const startDate = getDateRangeStart(range);
   const where = startDate ? { startedAt: { gte: startDate } } : {};
   const whereClause = startDate
     ? Prisma.sql`WHERE "startedAt" >= ${startDate}`
@@ -39,12 +19,12 @@ export async function GET(req: NextRequest) {
     { date: string; input_tokens: bigint; output_tokens: bigint }[]
   >(Prisma.sql`
     SELECT
-      TO_CHAR("startedAt", 'YYYY-MM-DD') as date,
+      strftime('%Y-%m-%d', "startedAt") as date,
       COALESCE(SUM("inputTokens"), 0) as input_tokens,
       COALESCE(SUM("outputTokens"), 0) as output_tokens
     FROM session_logs
     ${whereClause}
-    GROUP BY TO_CHAR("startedAt", 'YYYY-MM-DD')
+    GROUP BY strftime('%Y-%m-%d', "startedAt")
     ORDER BY date ASC
   `);
 
@@ -59,12 +39,12 @@ export async function GET(req: NextRequest) {
     { date: string; repo_name: string; count: bigint }[]
   >(Prisma.sql`
     SELECT
-      TO_CHAR("startedAt", 'YYYY-MM-DD') as date,
+      strftime('%Y-%m-%d', "startedAt") as date,
       "repoName" as repo_name,
       COUNT(*) as count
     FROM session_logs
     ${whereClause}
-    GROUP BY TO_CHAR("startedAt", 'YYYY-MM-DD'), "repoName"
+    GROUP BY strftime('%Y-%m-%d', "startedAt"), "repoName"
     ORDER BY date ASC
   `);
 
@@ -125,10 +105,10 @@ export async function GET(req: NextRequest) {
       _avg: { durationSeconds: true, inputTokens: true, outputTokens: true },
     }),
     prisma.$queryRaw<{ hour: number; count: bigint }[]>(Prisma.sql`
-      SELECT EXTRACT(HOUR FROM "startedAt")::int as hour, COUNT(*) as count
+      SELECT CAST(strftime('%H', "startedAt") AS INTEGER) as hour, COUNT(*) as count
       FROM session_logs
       ${whereClause}
-      GROUP BY EXTRACT(HOUR FROM "startedAt")
+      GROUP BY CAST(strftime('%H', "startedAt") AS INTEGER)
       ORDER BY count DESC
       LIMIT 1
     `),
@@ -143,8 +123,8 @@ export async function GET(req: NextRequest) {
   >(Prisma.sql`
     SELECT
       COALESCE(SUM(CASE
-        WHEN "rawLog"->>'cacheReadTokens' IS NOT NULL
-        THEN ("rawLog"->>'cacheReadTokens')::bigint
+        WHEN json_extract("rawLog", '$.tokenUsage.cacheReadTokens') IS NOT NULL
+        THEN CAST(json_extract("rawLog", '$.tokenUsage.cacheReadTokens') AS INTEGER)
         ELSE 0
       END), 0) as cache_read,
       COALESCE(SUM("inputTokens"), 0) as total_input
@@ -168,4 +148,12 @@ export async function GET(req: NextRequest) {
       cacheHitRate: Math.round(cacheHitRate * 100) / 100,
     },
   });
+  } catch (error) {
+    console.error("[api/analytics] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to load data", detail: message },
+      { status: 500 }
+    );
+  }
 }

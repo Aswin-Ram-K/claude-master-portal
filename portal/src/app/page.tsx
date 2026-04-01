@@ -211,7 +211,7 @@ export default function DashboardPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-text-secondary">Files Changed</span>
                     <span className="text-text-primary font-mono">
-                      {(recentSessions[0].filesChanged as string[])?.length ?? 0}
+                      {Array.isArray(recentSessions[0].filesChanged) ? recentSessions[0].filesChanged.length : 0}
                     </span>
                   </div>
                 </div>

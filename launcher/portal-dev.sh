@@ -2,12 +2,11 @@
 set -euo pipefail
 
 # Claude Master Portal — Dev Mode Launcher
-# Starts postgres/redis via Docker, then runs Next.js dev server on host.
+# Standalone launcher — no Docker needed.
 # Works both from terminal and as a macOS .app bundle.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PORTAL_DIR/docker-compose.dev.yml"
 PORTAL_APP="$PORTAL_DIR/portal"
 LOG_FILE="$PORTAL_DIR/launcher/portal-dev.log"
 
@@ -37,57 +36,38 @@ err()  { echo -e "${RED}[Portal]${NC} $1" >&2; }
 log "Starting portal-dev.sh ($(date))"
 log "PATH: $PATH"
 
-# --- 1. Check Docker ---
-if ! command -v docker &>/dev/null; then
-  err "Docker is not installed. PATH=$PATH"
-  # Show error dialog if launched from .app
-  osascript -e 'display dialog "Docker not found. Please install Docker Desktop." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
+# --- 1. Check Node.js ---
+if ! command -v node &>/dev/null; then
+  err "Node.js is not installed. PATH=$PATH"
+  osascript -e 'display dialog "Node.js not found. Please install Node.js 18+." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
   exit 1
 fi
 
-if ! docker info &>/dev/null 2>&1; then
-  warn "Docker daemon is not running. Starting Docker Desktop..."
-  open /Applications/Docker.app
-  for i in $(seq 1 30); do
-    if docker info &>/dev/null 2>&1; then
-      ok "Docker is running."
-      break
-    fi
-    [ "$i" -eq 30 ] && { err "Docker failed to start."; exit 1; }
-    sleep 1
-  done
+NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+if [ "$NODE_VERSION" -lt 18 ]; then
+  err "Node.js >= 18 required (found v$NODE_VERSION)."
+  osascript -e 'display dialog "Node.js 18+ required. Please upgrade Node.js." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
+  exit 1
 fi
 
-# --- 2. Start postgres + redis ---
-if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -q "claude-portal"; then
-  ok "Database containers already running."
-else
-  log "Starting postgres + redis..."
-  docker compose -f "$COMPOSE_FILE" up postgres redis -d
-  # Wait for postgres to be healthy
-  for i in $(seq 1 30); do
-    if docker compose -f "$COMPOSE_FILE" ps --status healthy 2>/dev/null | grep -q "claude-portal-db"; then
-      ok "Database is healthy."
-      break
-    fi
-    sleep 1
-  done
-fi
+ok "Node.js v$(node -v | sed 's/v//') detected."
 
-# --- 3. Create .env if missing ---
-if [ ! -f "$PORTAL_DIR/.env" ]; then
-  cp "$PORTAL_DIR/.env.example" "$PORTAL_DIR/.env"
-  warn "Created .env from template. Edit $PORTAL_DIR/.env with your credentials."
-fi
-
-# --- 4. Run Prisma migrations if needed ---
+# --- 2. Set environment ---
 cd "$PORTAL_APP"
-export DATABASE_URL="postgresql://portal:portal@localhost:5433/claude_portal"
-export REDIS_URL="redis://localhost:6380"
+export DATABASE_URL="file:./prisma/data/portal.db"
 export CLAUDE_HOME="$HOME/.claude"
 
+# --- 3. Ensure data directory exists ---
+mkdir -p prisma/data
+chmod 700 prisma/data
+
+# --- 4. Sync database schema ---
 log "Syncing database schema..."
-npx prisma db push --skip-generate 2>/dev/null || true
+if ! npx prisma db push --skip-generate 2>&1; then
+  err "Database schema sync failed. Check logs for details."
+  osascript -e 'display dialog "Database schema sync failed. Check portal-dev.log for details." buttons {"OK"} with icon stop with title "Claude Portal"' 2>/dev/null || true
+  exit 1
+fi
 
 # --- 5. Check if dev server is already running ---
 if curl -sf http://localhost:3000/api/health &>/dev/null 2>&1; then

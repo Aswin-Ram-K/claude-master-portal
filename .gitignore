@@ -13,6 +13,17 @@ portal/out/
 data/
 portal_pgdata/
 portal_redisdata/
+portal/prisma/data/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Logs
+*.log
+launcher/*.log
+
+# Session logs (auto-generated per session)
+.claude-logs/
 
 # OS
 .DS_Store

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { fetchClaudeLogs } from "@/lib/github";
+import { deserializeSessionLog } from "@/lib/json-fields";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/repos/[owner]/[repo]/logs
@@ -10,6 +12,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { owner: string; repo: string } }
 ) {
+  try {
   const { owner, repo } = params;
   const repoSlug = `${owner}/${repo}`;
 
@@ -35,18 +38,21 @@ export async function GET(
     },
   });
 
+  // Deserialize JSON string fields for SQLite compatibility
+  const deserializedSessions = sessions.map(s => deserializeSessionLog(s as Record<string, unknown>));
+
   // Aggregate stats
   const stats = {
-    totalSessions: sessions.length,
-    totalCommits: sessions.reduce((sum, s) => {
+    totalSessions: deserializedSessions.length,
+    totalCommits: deserializedSessions.reduce((sum, s) => {
       const commits = s.commits as unknown[];
       return sum + (Array.isArray(commits) ? commits.length : 0);
     }, 0),
     totalFilesChanged: new Set(
-      sessions.flatMap((s) => (s.filesChanged as string[]) ?? [])
+      deserializedSessions.flatMap((s) => (s.filesChanged as string[]) ?? [])
     ).size,
-    totalTokens: sessions.reduce(
-      (sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0),
+    totalTokens: deserializedSessions.reduce(
+      (sum, s) => sum + ((s.inputTokens as number) ?? 0) + ((s.outputTokens as number) ?? 0),
       0
     ),
   };
@@ -55,6 +61,14 @@ export async function GET(
     owner,
     repo,
     stats,
-    sessions,
+    sessions: deserializedSessions,
   });
+  } catch (error) {
+    console.error("[api/repos/logs] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { error: "Failed to load data", detail: message },
+      { status: 500 }
+    );
+  }
 }

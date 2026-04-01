@@ -32,7 +32,7 @@ Type=Application
 Name=Claude Portal
 Comment=Claude Code Activity Dashboard
 Exec=$LAUNCHER
-Icon=$ICON
+Icon=$ICON_PNG
 Terminal=false
 Categories=Development;
 StartupWMClass=claude-portal
@@ -136,9 +136,12 @@ EOF
       cat > "$PORTAL_DIR/launcher/windows/claude-portal.bat" << EOF
 @echo off
 cd /d "$PORTAL_DIR"
-docker compose up -d --build
-timeout /t 10 /nobreak >nul
-start http://localhost
+cd /d "$PORTAL_DIR\portal"
+set DATABASE_URL=file:./prisma/data/portal.db
+set CLAUDE_HOME=%USERPROFILE%\.claude
+node .next/standalone/server.js
+timeout /t 5 /nobreak >nul
+start http://localhost:3000
 EOF
 
       # Create VBS silent launcher

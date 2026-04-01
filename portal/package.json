@@ -31,7 +31,6 @@
     "recharts": "^2.13.0",
     "lucide-react": "^0.460.0",
     "@octokit/rest": "^21.0.0",
-    "ioredis": "^5.4.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.5.0",
     "date-fns": "^4.1.0",

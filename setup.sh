@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Claude Master Portal — Full Auto-Setup Script
-# Run this once to set up everything: containers, desktop shortcut, and hooks.
+# Claude Master Portal — Standalone Setup
+# Run this once to set up everything: dependencies, database, desktop shortcut, and hooks.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PORTAL_DIR="$SCRIPT_DIR"
+PORTAL_APP="$PORTAL_DIR/portal"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -24,53 +25,51 @@ echo -e "${BLUE}║   Claude Master Portal — Setup       ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
 echo ""
 
-# --- 1. Prerequisites ---
+# --- 1. Check Node.js >= 18 ---
 log "Checking prerequisites..."
 
-if ! command -v docker &>/dev/null; then
-  err "Docker is not installed. Please install Docker first."
+if ! command -v node &>/dev/null; then
+  err "Node.js is not installed. Please install Node.js 18+ first."
   exit 1
 fi
 
-if ! docker info &>/dev/null 2>&1; then
-  err "Docker daemon is not running. Please start Docker."
+NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+if [ "$NODE_VERSION" -lt 18 ]; then
+  err "Node.js >= 18 required (found v$NODE_VERSION). Please upgrade."
   exit 1
 fi
 
-ok "Docker is available and running."
+ok "Node.js v$(node -v | sed 's/v//') detected."
 
-# --- 2. Environment ---
-if [ ! -f "$PORTAL_DIR/.env" ]; then
-  log "Creating .env from template..."
-  cp "$PORTAL_DIR/.env.example" "$PORTAL_DIR/.env"
-  warn "Created .env — please edit it with your GitHub token:"
-  warn "  $PORTAL_DIR/.env"
-else
-  ok ".env file exists."
-fi
+# --- 2. Install dependencies ---
+log "Installing dependencies..."
+cd "$PORTAL_APP"
+npm install
 
-# --- 3. Start Containers ---
-log "Building and starting containers..."
-docker compose -f "$PORTAL_DIR/docker-compose.yml" up -d --build
+# --- 3. Generate Prisma client ---
+log "Generating Prisma client..."
+npx prisma generate
 
-log "Waiting for portal to be ready..."
-for i in $(seq 1 60); do
-  if curl -sf http://localhost/api/health &>/dev/null 2>&1; then
-    ok "Portal is running at http://localhost"
-    break
-  fi
-  if [ "$i" -eq 60 ]; then
-    warn "Health check timed out — check: docker compose logs -f"
-  fi
-  sleep 1
-done
+# --- 4. Create data directory and push schema ---
+log "Setting up SQLite database..."
+mkdir -p prisma/data
+chmod 700 prisma/data
+export DATABASE_URL="file:./prisma/data/portal.db"
+npx prisma db push
 
-# --- 4. Install Desktop Shortcut ---
+ok "Database ready at prisma/data/portal.db"
+
+# --- 5. Install Desktop Shortcut ---
+SHORTCUT_INSTALLED=false
 log "Installing desktop shortcut..."
-chmod +x "$PORTAL_DIR/launcher/install.sh"
-"$PORTAL_DIR/launcher/install.sh"
+if chmod +x "$PORTAL_DIR/launcher/install.sh" && "$PORTAL_DIR/launcher/install.sh"; then
+  SHORTCUT_INSTALLED=true
+else
+  warn "Desktop shortcut installation failed (non-fatal)."
+fi
 
-# --- 5. Register Hooks ---
+# --- 6. Register Hooks ---
+HOOK_REGISTERED=false
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 HOOK_PATH="$PORTAL_DIR/hooks/session-start-portal.sh"
 chmod +x "$HOOK_PATH"
@@ -82,7 +81,8 @@ if [ -f "$CLAUDE_SETTINGS" ]; then
       log "Registering SessionStart hook in Claude settings..."
 
       # Merge the new hook into existing settings
-      jq --arg hook "$HOOK_PATH" '
+      TMPFILE=$(mktemp) \
+        && jq --arg hook "$HOOK_PATH" '
         .hooks.SessionStart = ((.hooks.SessionStart // []) + [{
           "matcher": "",
           "hooks": [{
@@ -90,12 +90,14 @@ if [ -f "$CLAUDE_SETTINGS" ]; then
             "command": $hook
           }]
         }])
-      ' "$CLAUDE_SETTINGS" > /tmp/claude-settings-tmp.json \
-        && mv /tmp/claude-settings-tmp.json "$CLAUDE_SETTINGS"
+      ' "$CLAUDE_SETTINGS" > "$TMPFILE" \
+        && mv "$TMPFILE" "$CLAUDE_SETTINGS"
 
       ok "SessionStart hook registered."
+      HOOK_REGISTERED=true
     else
       ok "SessionStart hook already registered."
+      HOOK_REGISTERED=true
     fi
   else
     warn "jq not installed — please add the SessionStart hook manually."
@@ -112,12 +114,20 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║   Setup Complete!                    ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
 echo ""
-ok "Portal: http://localhost"
-ok "Desktop shortcut installed"
-ok "Auto-start hook registered"
+ok "Database: portal/prisma/data/portal.db (SQLite)"
+if $SHORTCUT_INSTALLED; then
+  ok "Desktop shortcut installed"
+else
+  warn "Desktop shortcut NOT installed (run launcher/install.sh manually)"
+fi
+if $HOOK_REGISTERED; then
+  ok "Auto-start hook registered"
+else
+  warn "Auto-start hook NOT registered (install jq or add manually)"
+fi
 echo ""
 echo "Next steps:"
-echo "  1. Edit $PORTAL_DIR/.env with your GitHub token"
-echo "  2. Open http://localhost to access the dashboard"
+echo "  1. Run: ./launcher/portal-dev.sh   (dev mode)"
+echo "  2. Open http://localhost:3000 to access the dashboard"
 echo "  3. Every new Claude Code session will auto-start the portal"
 echo ""

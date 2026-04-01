@@ -1,17 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
-# Claude Master Portal — Core Launcher
-# Starts Docker containers and opens the portal in your browser.
+# Claude Master Portal — Production Launcher
+# Standalone launcher — no Docker needed.
 # Works both from terminal and as a macOS .app bundle.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PORTAL_DIR/docker-compose.yml"
+PORTAL_APP="$PORTAL_DIR/portal"
 LOG_FILE="$PORTAL_DIR/launcher/portal.log"
 
 # --- PATH setup for .app context (macOS .app bundles don't inherit shell PATH) ---
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:$PATH"
+
+# Source nvm if available (for node/npm)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null
 
 # Redirect all output to log file when launched from .app (no terminal)
 if [ ! -t 0 ] && [ ! -t 1 ]; then
@@ -32,75 +36,69 @@ err()  { echo -e "${RED}[Portal]${NC} $1" >&2; }
 
 log "Starting portal.sh ($(date))"
 
-# --- 1. Check Docker ---
-if ! command -v docker &>/dev/null; then
-  err "Docker is not installed."
-  osascript -e 'display dialog "Docker not found. Please install Docker Desktop." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
+# --- 1. Check Node.js ---
+if ! command -v node &>/dev/null; then
+  err "Node.js is not installed."
+  osascript -e 'display dialog "Node.js not found. Please install Node.js 18+." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
   exit 1
 fi
 
-if ! docker info &>/dev/null 2>&1; then
-  warn "Docker daemon is not running. Attempting to start..."
-
-  case "$(uname -s)" in
-    Darwin)
-      open -a Docker
-      ;;
-    Linux)
-      sudo systemctl start docker 2>/dev/null || true
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      powershell.exe -Command "Start-Process 'C:\Program Files\Docker\Docker\Docker Desktop.exe'" 2>/dev/null || true
-      ;;
-  esac
-
-  log "Waiting for Docker to start..."
-  for i in $(seq 1 30); do
-    if docker info &>/dev/null 2>&1; then
-      ok "Docker is running."
-      break
-    fi
-    if [ "$i" -eq 30 ]; then
-      err "Docker failed to start after 30 seconds. Please start Docker manually."
-      osascript -e 'display dialog "Docker failed to start after 30 seconds. Please start Docker Desktop manually." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
-      exit 1
-    fi
-    sleep 1
-  done
+NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
+if [ "$NODE_VERSION" -lt 18 ]; then
+  err "Node.js >= 18 required (found v$NODE_VERSION)."
+  osascript -e 'display dialog "Node.js 18+ required. Please upgrade Node.js." buttons {"OK"} with icon caution with title "Claude Portal"' 2>/dev/null || true
+  exit 1
 fi
 
-# --- 2. Check if containers are already running ---
-if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -q "claude-portal"; then
+ok "Node.js v$(node -v | sed 's/v//') detected."
+
+# --- 2. Set environment ---
+cd "$PORTAL_APP"
+export DATABASE_URL="file:./prisma/data/portal.db"
+export CLAUDE_HOME="$HOME/.claude"
+
+# --- 3. Ensure data directory exists ---
+mkdir -p prisma/data
+chmod 700 prisma/data
+
+# --- 4. Sync database schema ---
+log "Syncing database schema..."
+if ! npx prisma db push --skip-generate 2>&1; then
+  err "Database schema sync failed. Check logs for details."
+  osascript -e 'display dialog "Database schema sync failed. Check portal.log for details." buttons {"OK"} with icon stop with title "Claude Portal"' 2>/dev/null || true
+  exit 1
+fi
+
+# --- 5. Build if needed ---
+if [ ! -f ".next/standalone/server.js" ]; then
+  log "Production build not found. Building..."
+  npm run build
+fi
+
+# --- 6. Check if server is already running ---
+PORTAL_URL="http://localhost:3000"
+
+if curl -sf "$PORTAL_URL/api/health" &>/dev/null 2>&1; then
   ok "Portal is already running."
 else
-  # --- 3. Create .env if missing ---
-  if [ ! -f "$PORTAL_DIR/.env" ]; then
-    warn "No .env file found. Copying from .env.example..."
-    cp "$PORTAL_DIR/.env.example" "$PORTAL_DIR/.env"
-    warn "Please edit $PORTAL_DIR/.env with your credentials."
-  fi
+  log "Starting production server..."
+  node .next/standalone/server.js &
+  SERVER_PID=$!
 
-  # --- 4. Start containers ---
-  log "Starting Claude Master Portal containers..."
-  docker compose -f "$COMPOSE_FILE" up -d --build
-
-  # --- 5. Wait for health ---
-  log "Waiting for portal to be ready..."
+  # Wait for server to be ready
   for i in $(seq 1 60); do
-    if curl -sf http://localhost/api/health &>/dev/null 2>&1; then
+    if curl -sf "$PORTAL_URL/api/health" &>/dev/null 2>&1; then
       ok "Portal is ready!"
       break
     fi
     if [ "$i" -eq 60 ]; then
       warn "Portal health check timed out. It may still be starting up."
-      warn "Check logs with: docker compose -f $COMPOSE_FILE logs -f"
     fi
     sleep 1
   done
 fi
 
-# --- 6. Open browser ---
-PORTAL_URL="http://localhost"
+# --- 7. Open browser ---
 log "Opening $PORTAL_URL ..."
 
 case "$(uname -s)" in
@@ -110,3 +108,6 @@ case "$(uname -s)" in
 esac
 
 ok "Claude Master Portal is running at $PORTAL_URL"
+
+# Keep script alive so the .app doesn't close immediately
+wait 2>/dev/null || true

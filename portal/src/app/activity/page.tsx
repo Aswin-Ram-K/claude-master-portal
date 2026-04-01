@@ -71,7 +71,7 @@ export default function ActivityPage() {
               </div>
 
               {sessions.map((s) => {
-                const files = (s.filesChanged as string[]) ?? [];
+                const files = Array.isArray(s.filesChanged) ? s.filesChanged as string[] : [];
                 const totalTokens =
                   (s.inputTokens ?? 0) + (s.outputTokens ?? 0);
                 const date = new Date(s.startedAt).toLocaleString(undefined, {

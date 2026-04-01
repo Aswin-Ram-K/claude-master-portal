@@ -2,41 +2,20 @@
 set -euo pipefail
 
 # Claude Master Portal — SessionStart Hook
-# Auto-starts the portal containers when any Claude Code session begins.
-# Runs async so it doesn't block session startup.
+# Lightweight check: ensure portal is running when a Claude Code session starts.
 
-echo '{"async": true, "asyncTimeout": 60000}'
+echo '{"async": true, "asyncTimeout": 30000}'
 
+# Quick check — if portal is already running, exit
+if curl -sf http://localhost:3000/api/health &>/dev/null 2>&1; then
+  exit 0
+fi
+
+# Try to start portal in background
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORTAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PORTAL_DIR/docker-compose.dev.yml"
+LAUNCHER="$PORTAL_DIR/launcher/portal-dev.sh"
 
-# Exit if Docker is not available
-if ! command -v docker &>/dev/null; then
-  exit 0
+if [ -x "$LAUNCHER" ]; then
+  nohup "$LAUNCHER" &>/dev/null &
 fi
-
-# Exit if Docker daemon is not running
-if ! docker info &>/dev/null 2>&1; then
-  exit 0
-fi
-
-# Exit if compose file doesn't exist
-if [ ! -f "$COMPOSE_FILE" ]; then
-  exit 0
-fi
-
-# Check if containers are already running
-if docker compose -f "$COMPOSE_FILE" ps --status running 2>/dev/null | grep -q "claude-portal"; then
-  exit 0
-fi
-
-# Create .env if missing
-if [ ! -f "$PORTAL_DIR/.env" ]; then
-  if [ -f "$PORTAL_DIR/.env.example" ]; then
-    cp "$PORTAL_DIR/.env.example" "$PORTAL_DIR/.env"
-  fi
-fi
-
-# Start database containers only (dev mode — portal runs on host)
-docker compose -f "$COMPOSE_FILE" up postgres redis -d 2>/dev/null || true
