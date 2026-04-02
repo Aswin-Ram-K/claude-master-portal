@@ -1,0 +1,62 @@
+name: ClaudePortal
+options:
+  bundleIdPrefix: com.aswinram
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+targets:
+  ClaudePortal:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/App
+      - Sources/Widget/ColorExtension.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aswinram.ClaudePortal
+        PRODUCT_NAME: Claude Portal Widget
+        INFOPLIST_VALUES: |
+          CFBundleName=$(PRODUCT_NAME)
+          CFBundleDisplayName=Claude Portal
+          CFBundleIdentifier=$(PRODUCT_BUNDLE_IDENTIFIER)
+          CFBundleVersion=1
+          CFBundleShortVersionString=1.0
+          LSMinimumSystemVersion=$(MACOSX_DEPLOYMENT_TARGET)
+          NSAppTransportSecurity=<dict><key>NSAllowsLocalNetworking</key><true/></dict>
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+    resources:
+      - Assets.xcassets
+
+  ClaudePortalWidgetExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Sources/Widget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aswinram.ClaudePortal.Widget
+        PRODUCT_NAME: ClaudePortalWidget
+        INFOPLIST_VALUES: |
+          CFBundleName=$(PRODUCT_NAME)
+          CFBundleDisplayName=Claude Portal Widget
+          CFBundleIdentifier=$(PRODUCT_BUNDLE_IDENTIFIER)
+          CFBundleVersion=1
+          CFBundleShortVersionString=1.0
+          NSExtension=<dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
+          NSAppTransportSecurity=<dict><key>NSAllowsLocalNetworking</key><true/></dict>
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+    resources:
+      - Assets.xcassets
+    dependencies:
+      - target: ClaudePortal
+        embed: false
